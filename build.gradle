@@ -1,0 +1,93 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.0.0'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '2.0.0'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id 'org.hidetake.ssh' version '2.11.2'
+}
+
+group = 'net.tacobuddies'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+    }
+    maven {
+        url = 'https://jitpack.io'
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = '1.10.10-SNAPSHOT'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly group: 'net.runelite', name: 'cache', version: runeLiteVersion
+    compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+
+    implementation group: 'io.github.classgraph', name: 'classgraph', version: '4.8.174'
+    implementation group: 'io.github.oshai', name: 'kotlin-logging-jvm', version: '5.1.4'
+    implementation group: 'org.jetbrains.kotlinx', name: 'kotlinx-coroutines-core', version: '1.9.0-RC'
+    implementation group: 'org.jetbrains.kotlinx', name: 'kotlinx-serialization-json', version: '1.7.1'
+    implementation group: 'com.github.Otsoko', name: 'bezier', version: 'v1.0.0'
+    implementation group: 'com.github.joonasvali.naturalmouse', name: 'naturalmouse', version: '2.0.3'
+    implementation group: 'com.eatthepath', name: 'java-otp', version: '0.4.0'
+    implementation group: 'org.ow2.asm', name: 'asm', version: '9.7'
+    implementation group: 'org.ow2.asm', name: 'asm-tree', version: '9.7'
+    implementation group: 'org.ow2.asm', name: 'asm-util', version: '9.7'
+
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
+}
+
+kotlin {
+    kotlin.compilerOptions {
+        freeCompilerArgs.add('-include-runtime')
+        freeCompilerArgs.add('-Xjvm-default=all')
+    }
+
+    jvmToolchain(11)
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    manifest {
+        attributes 'Premain-Class': 'net.tacobuddies.bot.Agent'
+        attributes 'Agentmain-Class': 'net.tacobuddies.bot.Agent'
+        attributes 'Can-Retransform-Classes': 'true'
+    }
+}
+
+shadowJar {
+    doLast {
+        copy {
+            from "build/libs"
+            into System.getProperty("user.home") + "/Downloads"
+            include "*-all.jar"
+        }
+    }
+}
+
+remotes {
+    controlPlane {
+        host = '192.168.10.10'
+        user = 'deploy'
+        identity = file("config/deploy_id")
+    }
+}
+
+tasks.register('deploy') {
+    dependsOn(shadowJar)
+
+    doLast {
+        ssh.run {
+            session(remotes.controlPlane) {
+                put from: "$buildDir/libs/${project.name}-${project.version}-all.jar", into: "/opt/bot/${project.name}-latest.jar"
+                put from: "$projectDir/accounts.json", into: "/opt/bot/accounts.json"
+            }
+        }
+    }
+}
